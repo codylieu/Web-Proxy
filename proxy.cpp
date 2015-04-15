@@ -19,6 +19,12 @@ struct LRU_Cache {
 };
 typedef struct LRU_Cache cache;
 
+struct node {
+  int val; // Should probably be a char *
+  struct node *next;
+  struct node *prev;
+}*root;
+
 // Also need a list of connections
 struct connections {
   int timeout;
