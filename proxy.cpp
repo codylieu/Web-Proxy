@@ -25,6 +25,12 @@ struct connections {
   int closed;
 };
 
+struct thread_params {
+  uint16_t port;
+  int sockfd;
+  char buf[MAX_MSG_LENGTH];
+};
+
 void get () {
 
 }
@@ -42,8 +48,33 @@ void setHead () {
 }
 
 // Called by pthread to process each new connection request
-void processRequest () {
+void *processRequest (void *input) {
+  uint16_t port;
+  int sockfd;
+  char buf[MAX_MSG_LENGTH], url[MAX_MSG_LENGTH];
+  memset(buf, 0, MAX_MSG_LENGTH);
+  memset(url, 0, MAX_MSG_LENGTH);
 
+  struct thread_params *params = (struct thread_params *)input;
+  port = params->port;
+  sockfd = params->sockfd;
+  memcpy(buf, params->buf, MAX_MSG_LENGTH);
+  char *tok = strtok(buf, " ");
+
+  if (strcmp(tok, "GET") != 0) { // Only need to deal with GET requests
+    printf("Command is not get\n");
+    return NULL;
+  }
+  
+  // Command is get
+  // get url and then use getaddrinfo() to get IP Address
+
+
+
+  // change LRU Cache as necessary
+  // Should I initialize it in main?
+
+  return NULL;
 }
 
 // Close connection to the web server and the connection to the browser 
@@ -55,8 +86,8 @@ void closeConnection () {
 int initServer (uint16_t port) {
   struct sockaddr_in sin;
   socklen_t addr_size;
-  char buf[MAX_MSG_LENGTH];
   int s, new_s;
+  char buf[MAX_MSG_LENGTH];
 
   bzero((char *)&sin, sizeof(sin));
   sin.sin_family = AF_INET;
@@ -77,13 +108,21 @@ int initServer (uint16_t port) {
       perror("simplex-talk: accept");
       exit(1);
     }
-    socklen_t len = recv(new_s, buf, sizeof(buf), 0);
-    printf("CHECK: %d\n", len);
-    if ((addr_size = len) > 0) {
-      printf("REQUEST RECEIVED: %s\n", buf);
+
+    if ((addr_size = recv(new_s, buf, sizeof(buf), 0)) > 0) {
+      struct thread_params params;
+      params.port = port;
+      params.sockfd = new_s;
+      memset(params.buf, 0, MAX_MSG_LENGTH);
+      memcpy(params.buf, buf, MAX_MSG_LENGTH);
+
+      pthread_t requestThread;
+      pthread_create(&requestThread, NULL, &processRequest, (void *)&params);
     }
+
     close(new_s);
   }
+  close(s);
   return 0;
 }
 
