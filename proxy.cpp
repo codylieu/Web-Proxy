@@ -83,21 +83,21 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
   if ((status = getaddrinfo(strtok(url, "/"), NULL, &hints, &res)) != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
   }
-  // printf("URL Check: %s\n", url);
-  // printf("HTTP Check: %s\n", httpVer);
+  printf("URL Check: %s\n", url);
+  printf("HTTP Check: %s\n", httpVer);
 
-  // void *addr;
-  // char ipver[] = "IPv4";
+  void *addr;
+  char ipver[] = "IPv4";
 
-  // struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
-  // addr = &(ipv4->sin_addr);
-  // uint16_t sendPort = ipv4->sin_port; // Not sure if this is the right port
+  struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
+  addr = &(ipv4->sin_addr);
+  uint16_t sendPort = ipv4->sin_port; // Not sure if this is the right port
 
-  // inet_ntop(res->ai_family, addr, ipstr, sizeof(ipstr));
-  // freeaddrinfo(res);
+  inet_ntop(res->ai_family, addr, ipstr, sizeof(ipstr));
+  freeaddrinfo(res);
 
-  // // IP Address is stored in ipstr
-  // printf("IP Address Check: %s\n", ipstr);
+  // IP Address is stored in ipstr
+  printf("IP Address Check: %s\n", ipstr);
   
   // if (cacheContains()) {
   //   return;
