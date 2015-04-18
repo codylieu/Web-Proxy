@@ -7,11 +7,13 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <netinet/in.h>
+#include <netdb.h>
 
 #include "proxy.h"
 
-#define MAX_MSG_LENGTH 500
+#define MAX_MSG_LENGTH 8192
 #define MAX_BACK_LOG 5
+#define MAX_ATTEMPTS 5
 
 struct LRU_Cache {
   // Map
@@ -53,13 +55,103 @@ void setHead () {
 
 }
 
+// Close connection to the web server and the connection to the browser 
+// when there is no more data to be transferred
+void closeConnection () {
+
+}
+
+void addToCache () {
+
+}
+
+int cacheContains () {
+  return 0;
+}
+
+void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
+  struct addrinfo hints, *res;
+  int status;
+  char ipstr[INET_ADDRSTRLEN];
+
+  memset(&ipstr, 0, sizeof(ipstr));
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+
+  printf("URL Check: %s\n", url);
+  if ((status = getaddrinfo(url, NULL, &hints, &res)) != 0) {
+    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+  }
+
+  // void *addr;
+  // char ipver[] = "IPv4";
+
+  // struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
+  // addr = &(ipv4->sin_addr);
+  // uint16_t sendPort = ipv4->sin_port; // Not sure if this is the right port
+
+  // inet_ntop(res->ai_family, addr, ipstr, sizeof(ipstr));
+  // freeaddrinfo(res);
+
+  // // IP Address is stored in ipstr
+  // printf("IP Address Check: %s\n", ipstr);
+  
+  // if (cacheContains()) {
+  //   return;
+  // }
+  // // Not in cache
+  // int responsefd;
+  // if ((responsefd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+  //   printf("Socket call failed\n");
+  //   return;
+  // }
+
+  // struct sockaddr_in sin;
+  // memset(&sin, 0, sizeof(sin));
+  // sin.sin_family = AF_INET;
+  // memcpy(&sin.sin_addr.s_addr, ipstr, INET_ADDRSTRLEN);
+  // sin.sin_port = sendPort; // This isn't the right port I don't think
+
+  // if (connect(responsefd, (sockaddr *)&sin, sizeof(sin)) < 0) {
+  //   printf("Connect call failed\n");
+  //   return;
+  // }
+
+  // char response[MAX_MSG_LENGTH];
+  // sprintf(response, "%s %s %s", "GET", url, httpVer);
+
+  // ssize_t written;
+  // if ((written = write(responsefd, response, sizeof(response))) <= 0) {
+  //   printf("Write failed\n");
+  //   return;
+  // }
+
+  // int numBytes = 0;
+  // while (strcmp(response, "\r\n") > 0) {
+  //   memset((void *)response, 0, MAX_MSG_LENGTH);
+
+  //   if ((numBytes = recv(responsefd, response, MAX_MSG_LENGTH, 0)) < 0) {
+  //     printf("Recv didn't receive anything\n");
+  //     return;
+  //   }
+
+  //   if (strcmp(response, "\r\n") == 0) {
+  //     // close connection
+  //     closeConnection();
+  //   }
+
+  //   send(sockfd, response, MAX_MSG_LENGTH, 0);
+  // }
+
+}
+
 // Called by pthread to process each new connection request
 void *processRequest (void *input) {
   uint16_t port;
   int sockfd;
-  char buf[MAX_MSG_LENGTH], url[MAX_MSG_LENGTH];
+  char buf[MAX_MSG_LENGTH];
   memset(buf, 0, MAX_MSG_LENGTH);
-  memset(url, 0, MAX_MSG_LENGTH);
 
   struct thread_params *params = (struct thread_params *)input;
   port = params->port;
@@ -71,22 +163,26 @@ void *processRequest (void *input) {
     printf("Command is not get\n");
     return NULL;
   }
-  
+
   // Command is get
   // get url and then use getaddrinfo() to get IP Address
 
+  tok = strtok(NULL, " "); // In the form http://www.cnn.com/
+  char *url = tok + 7;
+  // printf("URL: %s\n", url);
 
+  tok = strtok(NULL, " ");
+  char *httpVer = strtok(tok, "\n");
+  // printf("HTTP Version: %s\n", httpVer);
+
+  sendResponse(url, port, sockfd, httpVer);
 
   // change LRU Cache as necessary
   // Should I initialize it in main?
 
+  // addToCache();
+
   return NULL;
-}
-
-// Close connection to the web server and the connection to the browser 
-// when there is no more data to be transferred
-void closeConnection () {
-
 }
 
 int initServer (uint16_t port) {
