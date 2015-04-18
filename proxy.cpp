@@ -18,6 +18,7 @@
 struct LRU_Cache {
   // Map
   // Doubly Linked List
+  int size;
 };
 typedef struct LRU_Cache cache;
 
@@ -79,10 +80,11 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
 
-  printf("URL Check: %s\n", url);
-  if ((status = getaddrinfo(url, NULL, &hints, &res)) != 0) {
+  if ((status = getaddrinfo(strtok(url, "/"), NULL, &hints, &res)) != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
   }
+  // printf("URL Check: %s\n", url);
+  // printf("HTTP Check: %s\n", httpVer);
 
   // void *addr;
   // char ipver[] = "IPv4";
