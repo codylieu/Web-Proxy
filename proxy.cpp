@@ -82,43 +82,52 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
 
   if ((status = getaddrinfo(strtok(url, "/"), NULL, &hints, &res)) != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+    return;
   }
   printf("URL Check: %s\n", url);
   printf("HTTP Check: %s\n", httpVer);
-
   void *addr;
   char ipver[] = "IPv4";
 
-  struct sockaddr_in *ipv4 = (struct sockaddr_in *)res->ai_addr;
+  // Fix this segfault
+  struct sockaddr_in *ipv4 =(struct sockaddr_in *)res->ai_addr;
   addr = &(ipv4->sin_addr);
-  uint16_t sendPort = ipv4->sin_port; // Not sure if this is the right port
-
   inet_ntop(res->ai_family, addr, ipstr, sizeof(ipstr));
-  freeaddrinfo(res);
 
   // IP Address is stored in ipstr
   printf("IP Address Check: %s\n", ipstr);
+
+  if (cacheContains()) {
+    return;
+  }
   
-  // if (cacheContains()) {
-  //   return;
-  // }
-  // // Not in cache
-  // int responsefd;
-  // if ((responsefd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-  //   printf("Socket call failed\n");
-  //   return;
-  // }
+  // Not in cache
+  int responsefd, count;
 
-  // struct sockaddr_in sin;
-  // memset(&sin, 0, sizeof(sin));
-  // sin.sin_family = AF_INET;
-  // memcpy(&sin.sin_addr.s_addr, ipstr, INET_ADDRSTRLEN);
-  // sin.sin_port = sendPort; // This isn't the right port I don't think
+  // Keep trying to connect until it connects or max attempts is reached
+  // while (1) { // Do I need this while loop now that I remembered the return?
+  //   if (count > MAX_ATTEMPTS) {
+  //     printf("Couldn't connect\n");
+  //     return;
+  //   }
+  //   if ((responsefd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+  //     printf("Socket call failed\n");
+  //     continue;
+  //   }
+  //   struct sockaddr_in sin;
+  //   memset(&sin, 0, sizeof(sin));
+  //   sin.sin_family = AF_INET;
+  //   memcpy(&sin.sin_addr.s_addr, ipstr, INET_ADDRSTRLEN);
+  //   sin.sin_port = ipv4->sin_port;
 
-  // if (connect(responsefd, (sockaddr *)&sin, sizeof(sin)) < 0) {
-  //   printf("Connect call failed\n");
-  //   return;
+  //   if (connect(responsefd, (sockaddr *)&sin, sizeof(sin)) < 0) {
+  //     printf("Connect call failed\n");
+  //     count++;
+  //     continue;
+  //   }
+  //   break;
   // }
+  // printf("Connection Achieved\n");
 
   // char response[MAX_MSG_LENGTH];
   // sprintf(response, "%s %s %s", "GET", url, httpVer);
@@ -145,6 +154,8 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
 
   //   send(sockfd, response, MAX_MSG_LENGTH, 0);
   // }
+
+  freeaddrinfo(res);
 
 }
 
