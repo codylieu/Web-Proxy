@@ -133,33 +133,67 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
   }
 
   char response[MAX_MSG_LENGTH];
-  sprintf(response, "%s %s %s", "GET", url, httpVer);
+  sprintf(response, "GET %s %s", url, httpVer);
 
   int written;
-  // if ((written = write(responsefd, response, sizeof(response))) <= 0) {
-  //   printf("Write failed\n");
-  //   return;
-  // }
+  printf("REACHED 1\n");
+  printf("Response check: %s\n", response);
+  if ((written = send(responsefd, response, sizeof(response), 0)) <= 0) {
+    perror("Send error:");
+    return;
+  }
+  printf("REACHED 2\n");
+
+  int numBytes = 0;
+  while (strcmp(response, "\r\n") > 0) {
+    memset(response, 0, MAX_MSG_LENGTH);
+    printf("REACHED 3\n");
+    numBytes = read(responsefd, response, MAX_MSG_LENGTH);
+
+    printf("Bytes received: %d\n", numBytes);
+    printf("Received Check: %s\n", response);
+
+    printf("REACHED 4\n");
+
+    send(sockfd, response, MAX_MSG_LENGTH, 0);
+
+    printf("REACHED 5\n");
+  }
 
   // int numBytes = 0;
   // while (strcmp(response, "\r\n") > 0) {
   //   memset((void *)response, 0, MAX_MSG_LENGTH);
 
-  //   if ((numBytes = recv(responsefd, response, MAX_MSG_LENGTH, 0)) < 0) {
-  //     printf("Recv didn't receive anything\n");
+  //   printf("REACHED 3\n");
+  //   numBytes = read(responsefd, response, MAX_MSG_LENGTH);
+
+  //   printf("Bytes received: %d\n", numBytes);
+  //   printf("Received Check: %s\n", response);
+  //   printf("REACHED 3.5\n");
+
+  //   if (numBytes < 0) {
+  //     perror("Recv error");
   //     return;
   //   }
+  //   printf("REACHED 4\n");
 
   //   if (strcmp(response, "\r\n") == 0) {
   //     // close connection
   //     closeConnection();
+  //     // return;
   //   }
+  //   printf("REACHED 5\n");
 
-  //   send(sockfd, response, MAX_MSG_LENGTH, 0);
+  //   if (send(sockfd, response, MAX_MSG_LENGTH, 0) < 0) {
+  //     perror("Send error");
+  //   }
+  //   printf("REACHED 6\n");
   // }
 
+  // printf("REACHED 7\n");
   freeaddrinfo(res);
   close(responsefd);
+  close(sockfd);
 }
 
 // Called by pthread to process each new connection request
@@ -238,7 +272,6 @@ int initServer (uint16_t port) {
       pthread_create(&requestThread, NULL, &processRequest, (void *)&params);
     }
 
-    close(new_s);
   }
   close(s);
   return 0;
