@@ -24,6 +24,7 @@ typedef struct LRU_Cache cache;
 
 struct node {
   int val; // Should probably be a char *
+  int size;
   struct node *next;
   struct node *prev;
 }*root;
@@ -80,59 +81,61 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
 
-  if ((status = getaddrinfo(strtok(url, "/"), NULL, &hints, &res)) != 0) {
+  if ((status = getaddrinfo(strtok(url, "/"), "http", &hints, &res)) != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
     return;
   }
   printf("URL Check: %s\n", url);
-  printf("HTTP Check: %s\n", httpVer);
+  // printf("HTTP Check: %s\n", httpVer);
   void *addr;
   char ipver[] = "IPv4";
 
-  // Fix this segfault
   struct sockaddr_in *ipv4 =(struct sockaddr_in *)res->ai_addr;
   addr = &(ipv4->sin_addr);
-  inet_ntop(res->ai_family, addr, ipstr, sizeof(ipstr));
+  inet_ntop(AF_INET, addr, ipstr, sizeof(ipstr));
 
   // IP Address is stored in ipstr
-  printf("IP Address Check: %s\n", ipstr);
+  // printf("IP Address Check: %s\n", ipstr);
 
   if (cacheContains()) {
     return;
   }
-  
   // Not in cache
-  int responsefd, count;
+  int responsefd = -1;
+  int count = 0;
+  while (responsefd < 0 && count < MAX_ATTEMPTS) {
+    responsefd = socket(AF_INET, SOCK_STREAM, 0);
+    count++;
+  }
+  if (responsefd < 0) {
+    printf("Socket call failed\n");
+    return;
+  }
+  if (responsefd > 0) {
+    printf("Socket created\n");
+  }
 
-  // Keep trying to connect until it connects or max attempts is reached
-  // while (1) { // Do I need this while loop now that I remembered the return?
-  //   if (count > MAX_ATTEMPTS) {
-  //     printf("Couldn't connect\n");
-  //     return;
-  //   }
-  //   if ((responsefd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-  //     printf("Socket call failed\n");
-  //     continue;
-  //   }
-  //   struct sockaddr_in sin;
-  //   memset(&sin, 0, sizeof(sin));
-  //   sin.sin_family = AF_INET;
-  //   memcpy(&sin.sin_addr.s_addr, ipstr, INET_ADDRSTRLEN);
-  //   sin.sin_port = ipv4->sin_port;
+  struct sockaddr_in sin;
+  memset(&sin, 0, sizeof(sin));
+  sin.sin_addr.s_addr = inet_addr(ipstr);
+  sin.sin_family = AF_INET;
+  sin.sin_port = ipv4->sin_port; // Not sure if this is the right port
 
-  //   if (connect(responsefd, (sockaddr *)&sin, sizeof(sin)) < 0) {
-  //     printf("Connect call failed\n");
-  //     count++;
-  //     continue;
-  //   }
-  //   break;
-  // }
-  // printf("Connection Achieved\n");
+  int count2 = 0;
+  while (count2 < MAX_ATTEMPTS) {
+    if (connect(responsefd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+      perror("Connect error");
+      count2++;
+      continue;
+    }
+    printf("Connection Achieved\n");
+    break;
+  }
 
-  // char response[MAX_MSG_LENGTH];
-  // sprintf(response, "%s %s %s", "GET", url, httpVer);
+  char response[MAX_MSG_LENGTH];
+  sprintf(response, "%s %s %s", "GET", url, httpVer);
 
-  // ssize_t written;
+  int written;
   // if ((written = write(responsefd, response, sizeof(response))) <= 0) {
   //   printf("Write failed\n");
   //   return;
@@ -156,7 +159,7 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
   // }
 
   freeaddrinfo(res);
-
+  close(responsefd);
 }
 
 // Called by pthread to process each new connection request
