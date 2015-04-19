@@ -8,7 +8,7 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#include <errno.h>
+#include <signal.h>
 
 #include "proxy.h"
 
