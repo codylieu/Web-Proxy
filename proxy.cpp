@@ -8,6 +8,8 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <map>  //std::map library to use for caching
+#include <iterator>
 
 #include "proxy.h"
 
@@ -15,18 +17,23 @@
 #define MAX_BACK_LOG 5
 #define MAX_ATTEMPTS 5
 
-struct LRU_Cache {
-  // Map
-  // Doubly Linked List
-  int size;
-};
-typedef struct LRU_Cache cache;
-
 struct node {
-  int val; // Should probably be a char *
+  char *val;
   struct node *next;
   struct node *prev;
 }*root;
+
+struct LRU_Cache {
+  // Map
+  std::map<char, node> nodeMap;
+  // Doubly Linked List
+  node *head;
+  node *end;
+  int capacity;
+  int size;
+};
+// Global Cache
+LRU_Cache cache;
 
 // Also need a list of connections
 struct connections {
@@ -40,19 +47,31 @@ struct thread_params {
   char buf[MAX_MSG_LENGTH];
 };
 
-void get () {
+//********** METHODS FOR CACHING **********//
 
+void removeNode (node *node) {
+
+}
+
+void setHead (node *node) {
+
+}
+
+void get (char *key) {
+  // If you can't find the key...
+  if(cache.nodeMap.find(*key) == cache.nodeMap.end())  {
+    return;
+  }
+  // If you can find the key
+  else  {
+    node latest = cache.nodeMap.find(*key)->second;
+    removeNode(&latest);
+    setHead(&latest);
+  }
+  
 }
 
 void set () {
-
-}
-
-void removeNode () {
-
-}
-
-void setHead () {
 
 }
 
@@ -62,14 +81,29 @@ void closeConnection () {
 
 }
 
-void addToCache () {
+void addToCache (node *n) {
+  // printf("node value %s\n", n->val);
+  // If you can't find the key
+  if(cache.nodeMap.find(*n->val) == cache.nodeMap.end())  {
+    // This will change once we figure out how size of the cache works
+    if(cache.size < cache.capacity)  {
+      setHead(n);
+      cache.nodeMap.insert(std::pair<char, node>(n->val,n));
+    }
 
+  }
+  // If you can find the key
+  else  {
+    node latest = cache.nodeMap.find(*n->val)->second;
+
+  }
 }
 
 int cacheContains () {
   return 0;
 }
 
+//Called by process request 
 void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
   struct addrinfo hints, *res;
   int status;
@@ -182,7 +216,7 @@ void *processRequest (void *input) {
 
   tok = strtok(NULL, " "); // In the form http://www.cnn.com/
   char *url = tok + 7;
-  // printf("URL: %s\n", url);
+  printf("URL: %s\n", url);
 
   tok = strtok(NULL, " ");
   char *httpVer = strtok(tok, "\n");
@@ -193,7 +227,11 @@ void *processRequest (void *input) {
   // change LRU Cache as necessary
   // Should I initialize it in main?
 
-  // addToCache();
+  // New node to add to cache
+  node n;
+  n.val = url;
+
+  addToCache(&n);
 
   return NULL;
 }
@@ -254,6 +292,9 @@ int main(int argc, char ** argv) {
 
   uint16_t port = atoi(argv[1]);
   int cacheSize = atoi(argv[2]);
+
+  cache.capacity = cacheSize;
+  cache.size = 0;
 
   return initServer(port);
 }
