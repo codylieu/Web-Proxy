@@ -8,18 +8,21 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <netdb.h>
-#include <map>  //std::map library to use for caching
 #include <iostream>
+#include <vector>
+#include <map>  //std::map library to use for caching
 #include <signal.h>
 
 #include "proxy.h"
+
+using namespace std;
 
 #define MAX_MSG_LENGTH 8192
 #define MAX_BACK_LOG 5
 #define MAX_ATTEMPTS 5
 
 struct node {
-  char *val; // Should probably be a char *
+  char *val;
   int size;
   node *next;
   node *prev;
@@ -27,12 +30,12 @@ struct node {
 
 struct LRU_Cache {
   // Map
-  std::map<char*, node> nodeMap;
+  map<char*, node*>       nodeMap;
+  vector<node*>           freeEntries;
+  node *                  entries;
   // Doubly Linked List
-  node *head;
-  node *end;
-  int capacity;
-  int size;
+  node *                  head;
+  node *                  tail;
 };
 
 // Global Cache
@@ -52,51 +55,27 @@ struct thread_params {
 //********** METHODS FOR CACHING **********//
 
 void removeNode (node *n) {
-  node *cur = n;
-  node *pre = cur->prev;
-  node *post = cur->next;
-  
-  if(pre != NULL) {
-    pre->next = post;
-  }
-  else  {
-    cache.head = post;
-  }
-
-  if(post != NULL)  {
-    post->prev = pre;
-  }
-  else  {
-    cache.end = pre;
-  }
-
+  n->prev->next = n->next;
+  n->next->prev = n->prev;
 }
 
-void setHead (node *n) {
-  n->next = cache.head;
-  n->prev = NULL;
-  if(cache.head != NULL)  {
-    printf("head: %s\n",cache.head->val);
-    cache.head->prev = n;
-  }
-  cache.head = n;
-  if(cache.end == NULL)  {
-    cache.end = n;
-  }
+void setHead (node *n)  {
+  n->next = cache.head->next;
+  n->prev = cache.head;
+  cache.head->next = n;
+  n->next->prev = n;
 }
 
-void get (char *key) {
-  // If you can't find the key...
-  if(cache.nodeMap.find(key) == cache.nodeMap.end())  {
-    return;
+char * get(char *key) {
+  node * newNode = cache.nodeMap[key];
+  if(newNode) {
+    removeNode(newNode);
+    setHead(newNode);
+    return newNode->val;
   }
-  // If you can find the key
   else  {
-    node latest = cache.nodeMap.find(key)->second;
-    removeNode(&latest);
-    setHead(&latest);
+    return NULL;
   }
-  
 }
 
 // Close connection to the web server and the connection to the browser 
@@ -105,44 +84,35 @@ void closeConnection () {
 
 }
 
-void addToCache (node *n) {
-  // printf("node value %s\n", n->val);
-  // If the key isn't in the map...
-  if(cache.nodeMap.find(n->val) == cache.nodeMap.end())  {
-    // If the cache isn't full, just add the new node
-    if(cache.size < cache.capacity)  {
-      setHead(n);
-      cache.nodeMap.insert(std::pair<char*, struct node>(n->val,*n));
-      cache.size++;
-    }
-    // If the cache is full, need to kick off the least recently used
-    else  {
-      cache.nodeMap.erase(n->val);
-      cache.end = cache.end->prev;
-      if(cache.end != NULL) {
-        cache.end->next = NULL;
-      }
-      setHead(n);
-      cache.nodeMap.insert(std::pair<char*, struct node>(n->val,*n));
-    }
+void addToCache (char* key, char* val)  {
+  printf("adding %s to cache\n",key);
+  node * newNode = cache.nodeMap[key];
+  // If a node with the input key already exists
+  if(newNode) {
+    // Refresh the link list
+    removeNode(newNode);
+    newNode->val = val;
+    setHead(newNode);
+    
   }
-  // If the key is in the map...
+  // If this is a new key
   else  {
-    // Set the key/node pair as the most recently used
-    node latest = cache.nodeMap.find(n->val)->second;
-    removeNode(&latest);
-    setHead(&latest);
+    if(cache.freeEntries.empty()) {
+      newNode = cache.tail->prev;
+      removeNode(newNode);
+      cache.nodeMap.erase(key);
+      newNode->val = val;
+      cache.nodeMap[key] = newNode;
+      setHead(newNode);
+    }
+    else  {
+      newNode = cache.freeEntries.back();
+      cache.freeEntries.pop_back();
+      newNode->val = val;
+      cache.nodeMap[key] = newNode;
+      setHead(newNode);
+    }
   }
-
-  // The following code is just to print out the current cache
-  printf("CURRENT CACHE:\n");
-  node *cur = cache.head;
-  while(cur != NULL)  {
-    printf(" %s ",cur->val);
-    cur = cur->prev;
-  }
-  printf("\n");
-
 }
 
 int cacheContains () {
@@ -287,10 +257,8 @@ void *processRequest (void *input) {
 
   handleResponse(sockfd, originalRequest, ipstr, ipv4->sin_port);
 
-  // New node to add to cache
-  node n;
-  n.val = url;
-  addToCache(&n);
+  // New node to add to cache (where key=url and val=url FOR NOW)
+  addToCache(url, url);
 
   freeaddrinfo(res);
   return NULL;
@@ -336,6 +304,12 @@ int initServer (uint16_t port) {
 
   }
   close(s);
+
+  // Destroy the cache
+  delete cache.head;
+  delete cache.tail;
+  delete [] cache.entries;
+
   return 0;
 }
 
@@ -353,10 +327,18 @@ int main(int argc, char ** argv) {
   uint16_t port = atoi(argv[1]);
   int cacheSize = atoi(argv[2]);
 
-  cache.capacity = cacheSize;
-  cache.size = 0;
-  cache.head = NULL;
-  cache.end = NULL;
+  // Initialize LRU Cache
+  cache.entries = new node[cacheSize];
+  for(int i = 0; i < cacheSize; i++)  {
+    cache.freeEntries.push_back(cache.entries+i);
+  }
+  cache.head = new node;
+  cache.tail = new node;
+  cache.head->prev = NULL;
+  cache.head->next = cache.tail;
+  cache.tail->next = NULL;
+  cache.tail->prev = cache.head;
 
+  // Initialize the server
   return initServer(port);
 }
