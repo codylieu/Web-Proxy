@@ -9,7 +9,7 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <map>  //std::map library to use for caching
-#include <iterator>
+#include <iostream>
 
 #include "proxy.h"
 
@@ -18,20 +18,22 @@
 #define MAX_ATTEMPTS 5
 
 struct node {
-  char *val;
+  char *val; // Should probably be a char *
+  int size;
   struct node *next;
   struct node *prev;
 }*root;
 
 struct LRU_Cache {
   // Map
-  std::map<char, node> nodeMap;
+  std::map<char*, node> nodeMap;
   // Doubly Linked List
   node *head;
   node *end;
   int capacity;
   int size;
 };
+
 // Global Cache
 LRU_Cache cache;
 
@@ -49,30 +51,51 @@ struct thread_params {
 
 //********** METHODS FOR CACHING **********//
 
-void removeNode (node *node) {
+void removeNode (node *n) {
+  node *cur = n;
+  node *pre = cur->prev;
+  node *post = cur->next;
+  
+  if(pre != NULL) {
+    pre->next = post;
+  }
+  else  {
+    cache.head = post;
+  }
+
+  if(post != NULL)  {
+    post->prev = pre;
+  }
+  else  {
+    cache.end = pre;
+  }
 
 }
 
-void setHead (node *node) {
-
+void setHead (node *n) {
+  n->next = cache.head;
+  n->prev = NULL;
+  if(cache.head != NULL)  {
+    cache.head->prev = n;
+  }
+  cache.head = n;
+  if(cache.end == NULL)  {
+    cache.end = n;
+  }
 }
 
 void get (char *key) {
   // If you can't find the key...
-  if(cache.nodeMap.find(*key) == cache.nodeMap.end())  {
+  if(cache.nodeMap.find(key) == cache.nodeMap.end())  {
     return;
   }
   // If you can find the key
   else  {
-    node latest = cache.nodeMap.find(*key)->second;
+    node latest = cache.nodeMap.find(key)->second;
     removeNode(&latest);
     setHead(&latest);
   }
   
-}
-
-void set () {
-
 }
 
 // Close connection to the web server and the connection to the browser 
@@ -83,20 +106,32 @@ void closeConnection () {
 
 void addToCache (node *n) {
   // printf("node value %s\n", n->val);
-  // If you can't find the key
-  if(cache.nodeMap.find(*n->val) == cache.nodeMap.end())  {
-    // This will change once we figure out how size of the cache works
+  // If the key isn't in the map...
+  if(cache.nodeMap.find(n->val) == cache.nodeMap.end())  {
+    // If the cache isn't full, just add the new node
     if(cache.size < cache.capacity)  {
       setHead(n);
-      cache.nodeMap.insert(std::pair<char, node>(n->val,n));
+      cache.nodeMap.insert(std::pair<char*, struct node>(n->val,*n));
     }
 
   }
-  // If you can find the key
+  // If the key is in the map...
   else  {
-    node latest = cache.nodeMap.find(*n->val)->second;
-
+    // Set the key/node pair as the most recently used
+    node latest = cache.nodeMap.find(n->val)->second;
+    removeNode(&latest);
+    setHead(&latest);
   }
+
+  // The following code is just to print out the current cache
+  printf("CURRENT CACHE:\n");
+  node *cur = cache.head;
+  while(cur != NULL)  {
+    printf(" %s ",cur->val);
+    cur = cur->prev;
+  }
+  printf("\n");
+
 }
 
 int cacheContains () {
@@ -114,83 +149,119 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
   hints.ai_family = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
 
-  if ((status = getaddrinfo(strtok(url, "/"), NULL, &hints, &res)) != 0) {
+  if ((status = getaddrinfo(strtok(url, "/"), "http", &hints, &res)) != 0) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
     return;
   }
   printf("URL Check: %s\n", url);
-  printf("HTTP Check: %s\n", httpVer);
+  // printf("HTTP Check: %s\n", httpVer);
   void *addr;
   char ipver[] = "IPv4";
 
-  // Fix this segfault
   struct sockaddr_in *ipv4 =(struct sockaddr_in *)res->ai_addr;
   addr = &(ipv4->sin_addr);
-  inet_ntop(res->ai_family, addr, ipstr, sizeof(ipstr));
+  inet_ntop(AF_INET, addr, ipstr, sizeof(ipstr));
 
   // IP Address is stored in ipstr
-  printf("IP Address Check: %s\n", ipstr);
+  // printf("IP Address Check: %s\n", ipstr);
 
   if (cacheContains()) {
     return;
   }
-  
   // Not in cache
-  int responsefd, count;
+  int responsefd = -1;
+  int count = 0;
+  while (responsefd < 0 && count < MAX_ATTEMPTS) {
+    responsefd = socket(AF_INET, SOCK_STREAM, 0);
+    count++;
+  }
+  if (responsefd < 0) {
+    printf("Socket call failed\n");
+    return;
+  }
+  if (responsefd > 0) {
+    printf("Socket created\n");
+  }
 
-  // Keep trying to connect until it connects or max attempts is reached
-  // while (1) { // Do I need this while loop now that I remembered the return?
-  //   if (count > MAX_ATTEMPTS) {
-  //     printf("Couldn't connect\n");
-  //     return;
-  //   }
-  //   if ((responsefd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-  //     printf("Socket call failed\n");
-  //     continue;
-  //   }
-  //   struct sockaddr_in sin;
-  //   memset(&sin, 0, sizeof(sin));
-  //   sin.sin_family = AF_INET;
-  //   memcpy(&sin.sin_addr.s_addr, ipstr, INET_ADDRSTRLEN);
-  //   sin.sin_port = ipv4->sin_port;
+  struct sockaddr_in sin;
+  memset(&sin, 0, sizeof(sin));
+  sin.sin_addr.s_addr = inet_addr(ipstr);
+  sin.sin_family = AF_INET;
+  sin.sin_port = ipv4->sin_port; // Not sure if this is the right port
 
-  //   if (connect(responsefd, (sockaddr *)&sin, sizeof(sin)) < 0) {
-  //     printf("Connect call failed\n");
-  //     count++;
-  //     continue;
-  //   }
-  //   break;
-  // }
-  // printf("Connection Achieved\n");
+  int count2 = 0;
+  while (count2 < MAX_ATTEMPTS) {
+    if (connect(responsefd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+      perror("Connect error");
+      count2++;
+      continue;
+    }
+    printf("Connection Achieved\n");
+    break;
+  }
 
-  // char response[MAX_MSG_LENGTH];
-  // sprintf(response, "%s %s %s", "GET", url, httpVer);
+  char response[MAX_MSG_LENGTH];
+  sprintf(response, "GET %s %s", url, httpVer);
 
-  // ssize_t written;
-  // if ((written = write(responsefd, response, sizeof(response))) <= 0) {
-  //   printf("Write failed\n");
-  //   return;
-  // }
+  int written;
+  printf("REACHED 1\n");
+  printf("Response check: %s\n", response);
+  if ((written = send(responsefd, response, sizeof(response), 0)) <= 0) {
+    perror("Send error:");
+    return;
+  }
+  printf("REACHED 2\n");
+
+  int numBytes = 0;
+  while (strcmp(response, "\r\n") > 0) {
+    memset(response, 0, MAX_MSG_LENGTH);
+    printf("REACHED 3\n");
+    numBytes = read(responsefd, response, MAX_MSG_LENGTH);
+
+    printf("Bytes received: %d\n", numBytes);
+    printf("Received Check: %s\n", response);
+
+    printf("REACHED 4\n");
+
+    send(sockfd, response, MAX_MSG_LENGTH, 0);
+
+    printf("REACHED 5\n");
+  }
 
   // int numBytes = 0;
   // while (strcmp(response, "\r\n") > 0) {
   //   memset((void *)response, 0, MAX_MSG_LENGTH);
 
-  //   if ((numBytes = recv(responsefd, response, MAX_MSG_LENGTH, 0)) < 0) {
-  //     printf("Recv didn't receive anything\n");
+  //   printf("REACHED 3\n");
+  //   numBytes = read(responsefd, response, MAX_MSG_LENGTH);
+
+  //   printf("Bytes received: %d\n", numBytes);
+  //   printf("Received Check: %s\n", response);
+  //   printf("REACHED 3.5\n");
+
+  //   if (numBytes < 0) {
+  //     perror("Recv error");
   //     return;
   //   }
+  //   printf("REACHED 4\n");
 
   //   if (strcmp(response, "\r\n") == 0) {
   //     // close connection
   //     closeConnection();
+  //     // return;
   //   }
+  //   printf("REACHED 5\n");
 
-  //   send(sockfd, response, MAX_MSG_LENGTH, 0);
+  //   if (send(sockfd, response, MAX_MSG_LENGTH, 0) < 0) {
+  //     perror("Send error");
+  //   }
+  //   printf("REACHED 6\n");
   // }
 
+  // printf("REACHED 7\n");
   freeaddrinfo(res);
-
+  close(responsefd);
+  close(sockfd);
 }
 
 // Called by pthread to process each new connection request
@@ -230,9 +301,8 @@ void *processRequest (void *input) {
   // New node to add to cache
   node n;
   n.val = url;
-
   addToCache(&n);
-
+  printf("nosegfault10\n");
   return NULL;
 }
 
@@ -273,7 +343,6 @@ int initServer (uint16_t port) {
       pthread_create(&requestThread, NULL, &processRequest, (void *)&params);
     }
 
-    close(new_s);
   }
   close(s);
   return 0;
@@ -298,21 +367,3 @@ int main(int argc, char ** argv) {
 
   return initServer(port);
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
