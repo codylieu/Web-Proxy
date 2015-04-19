@@ -87,8 +87,8 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer, char *or
     return;
   }
 
-  printf("URL Check: %s\n", url);
-  printf("HTTP Check: %s\n", httpVer);
+  // printf("URL Check: %s\n", url);
+  // printf("HTTP Check: %s\n", httpVer);
 
   void *addr;
   char ipver[] = "IPv4";
@@ -122,8 +122,7 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer, char *or
   memset(&sin, 0, sizeof(sin));
   sin.sin_addr.s_addr = inet_addr(ipstr);
   sin.sin_family = AF_INET;
-  sin.sin_port = ipv4->sin_port; // Not sure if this is the right port
-  // sin.sin_port = htons(port);
+  sin.sin_port = ipv4->sin_port;
 
   int count2 = 0;
   while (count2 < MAX_ATTEMPTS) {
@@ -136,14 +135,8 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer, char *or
     break;
   }
 
-  // char reformattedRequest[MAX_MSG_LENGTH];
-  // sprintf(reformattedRequest, "GET %s %s", url, httpVer);
+  // Need to send Original Request line by line?
 
-  // Need to send Original Request line by line
-
-  // send(responsefd, reformattedRequest, sizeof(reformattedRequest), 0);
-
-  // Trim off GET line since I already sent that
   // char *token = strtok(originalRequest, "\n");
   // printf("Token: %s\n", token);
   // char toSend2[MAX_MSG_LENGTH];
@@ -191,32 +184,14 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer, char *or
       break;
     }
     printf("===== Server response: %s\n", response);
-    send(sockfd, response, strlen(response), 0);
+    send(sockfd, response, numBytes, 0);
   }
   while (numBytes > 0);
-
-  /* Send/recv in one huge piece */
-
-  // send(responsefd, originalRequest, strlen(originalRequest), 0);
-
-  // char response[MAX_MSG_LENGTH];
-  // memset(response, 0, MAX_MSG_LENGTH);
-  // int numBytes = 0;
-  // while (1) {
-  //   if ((numBytes = recv(responsefd, response, MAX_MSG_LENGTH, 0)) < 0) {
-  //     continue;
-  //   }
-  //   break;
-  // }
-
-  // send(sockfd, response, strlen(response), 0);
-
-  // strcpy(response, "<h1>Hello</h1>");
-  // send(sockfd, response, strlen(response), 0);
 
   freeaddrinfo(res);
   close(responsefd);
   close(sockfd);
+  return;
 }
 
 // Called by pthread to process each new connection request
