@@ -71,7 +71,7 @@ int cacheContains () {
   return 0;
 }
 
-void sendResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t serverPort) {
+void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t serverPort) {
   if (cacheContains()) {
     return;
   }
@@ -178,7 +178,7 @@ void *processRequest (void *input) {
   memcpy(originalRequest, params->buf, MAX_MSG_LENGTH);
   char *tok = strtok(buf, " ");
 
-  if (strcmp(tok, "GET") != 0) { // Only need to deal with GET requests
+  if (strcmp(tok, "GET") != 0) {
     printf("Command is not get\n");
     return NULL;
   }
@@ -207,7 +207,7 @@ void *processRequest (void *input) {
   addr = &(ipv4->sin_addr);
   inet_ntop(AF_INET, addr, ipstr, sizeof(ipstr));
 
-  sendResponse(sockfd, originalRequest, ipstr, ipv4->sin_port);
+  handleResponse(sockfd, originalRequest, ipstr, ipv4->sin_port);
 
   // change LRU Cache as necessary
   // Should I initialize it in main?
