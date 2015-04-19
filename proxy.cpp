@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <errno.h>
 
 #include "proxy.h"
 
@@ -71,7 +72,7 @@ int cacheContains () {
   return 0;
 }
 
-void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
+void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer, char *originalRequest) {
   struct addrinfo hints, *res;
   int status;
   char ipstr[INET_ADDRSTRLEN];
@@ -85,8 +86,10 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
     return;
   }
+
   printf("URL Check: %s\n", url);
-  // printf("HTTP Check: %s\n", httpVer);
+  printf("HTTP Check: %s\n", httpVer);
+
   void *addr;
   char ipver[] = "IPv4";
 
@@ -120,6 +123,7 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
   sin.sin_addr.s_addr = inet_addr(ipstr);
   sin.sin_family = AF_INET;
   sin.sin_port = ipv4->sin_port; // Not sure if this is the right port
+  // sin.sin_port = htons(port);
 
   int count2 = 0;
   while (count2 < MAX_ATTEMPTS) {
@@ -132,65 +136,84 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
     break;
   }
 
-  char response[MAX_MSG_LENGTH];
-  sprintf(response, "GET %s %s", url, httpVer);
+  // char reformattedRequest[MAX_MSG_LENGTH];
+  // sprintf(reformattedRequest, "GET %s %s", url, httpVer);
 
-  int written;
-  printf("REACHED 1\n");
-  printf("Response check: %s\n", response);
-  if ((written = send(responsefd, response, sizeof(response), 0)) <= 0) {
-    perror("Send error:");
-    return;
-  }
-  printf("REACHED 2\n");
+  // Need to send Original Request line by line
 
-  int numBytes = 0;
-  while (strcmp(response, "\r\n") > 0) {
-    memset(response, 0, MAX_MSG_LENGTH);
-    printf("REACHED 3\n");
-    numBytes = read(responsefd, response, MAX_MSG_LENGTH);
+  // send(responsefd, reformattedRequest, sizeof(reformattedRequest), 0);
 
-    printf("Bytes received: %d\n", numBytes);
-    printf("Received Check: %s\n", response);
+  // Trim off GET line since I already sent that
+  // char *token = strtok(originalRequest, "\n");
+  // printf("Token: %s\n", token);
+  // char toSend2[MAX_MSG_LENGTH];
+  // memset(toSend2, 0, MAX_MSG_LENGTH);
+  // strcpy(toSend2, strdup(token));
+  // strcat(toSend2, "\n");
+  // send(responsefd, toSend2, strlen(toSend2), 0);
+  // // printf("Modified original request: %s\n", token);
 
-    printf("REACHED 4\n");
-
-    send(sockfd, response, MAX_MSG_LENGTH, 0);
-
-    printf("REACHED 5\n");
-  }
-
-  // int numBytes = 0;
-  // while (strcmp(response, "\r\n") > 0) {
-  //   memset((void *)response, 0, MAX_MSG_LENGTH);
-
-  //   printf("REACHED 3\n");
-  //   numBytes = read(responsefd, response, MAX_MSG_LENGTH);
-
-  //   printf("Bytes received: %d\n", numBytes);
-  //   printf("Received Check: %s\n", response);
-  //   printf("REACHED 3.5\n");
-
-  //   if (numBytes < 0) {
-  //     perror("Recv error");
-  //     return;
+  // while (strcmp(token, "\r\n") > 0) {
+  //   token = strtok(NULL, "\n");
+  //   if (strstr(token, "Keep-Alive:") || strstr(token, "Proxy-Connection: ") || strstr(token, "Connection: ")) {
+  //     // Do nothing
   //   }
-  //   printf("REACHED 4\n");
+  //   // if (0) {
 
-  //   if (strcmp(response, "\r\n") == 0) {
-  //     // close connection
-  //     closeConnection();
-  //     // return;
+  //   // }
+  //   else {
+  //     printf("Token: %s\n", token);
+  //     if (strcmp(token, "\r\n") == 0) {
+  //       char close[MAX_MSG_LENGTH];
+  //       memset(close, 0, MAX_MSG_LENGTH);
+  //       sprintf(close, "Connection: close\r\n");
+  //       printf("Token: %s\n", close);
+  //       send(responsefd, close, strlen(close), 0);
+  //     }
+  //     char toSend[MAX_MSG_LENGTH];
+  //     memset(toSend, 0, MAX_MSG_LENGTH);
+  //     strcpy(toSend, strdup(token));
+  //     strcat(toSend, "\n");
+  //     send(responsefd, toSend, strlen(toSend), 0);
   //   }
-  //   printf("REACHED 5\n");
-
-  //   if (send(sockfd, response, MAX_MSG_LENGTH, 0) < 0) {
-  //     perror("Send error");
-  //   }
-  //   printf("REACHED 6\n");
   // }
 
-  // printf("REACHED 7\n");
+  send(responsefd, originalRequest, strlen(originalRequest), 0);
+
+  char response[MAX_MSG_LENGTH];
+  int numBytes = 0;
+  do {
+    memset(response, 0, MAX_MSG_LENGTH);
+    while (1) {
+      if ((numBytes = recv(responsefd, response, MAX_MSG_LENGTH, 0)) < 0) {
+        continue;
+      }
+      break;
+    }
+    printf("===== Server response: %s\n", response);
+    send(sockfd, response, strlen(response), 0);
+  }
+  while (numBytes > 0);
+
+  /* Send/recv in one huge piece */
+
+  // send(responsefd, originalRequest, strlen(originalRequest), 0);
+
+  // char response[MAX_MSG_LENGTH];
+  // memset(response, 0, MAX_MSG_LENGTH);
+  // int numBytes = 0;
+  // while (1) {
+  //   if ((numBytes = recv(responsefd, response, MAX_MSG_LENGTH, 0)) < 0) {
+  //     continue;
+  //   }
+  //   break;
+  // }
+
+  // send(sockfd, response, strlen(response), 0);
+
+  // strcpy(response, "<h1>Hello</h1>");
+  // send(sockfd, response, strlen(response), 0);
+
   freeaddrinfo(res);
   close(responsefd);
   close(sockfd);
@@ -200,13 +223,15 @@ void sendResponse (char *url, uint16_t port, int sockfd, char *httpVer) {
 void *processRequest (void *input) {
   uint16_t port;
   int sockfd;
-  char buf[MAX_MSG_LENGTH];
+  char buf[MAX_MSG_LENGTH], originalRequest[MAX_MSG_LENGTH];
   memset(buf, 0, MAX_MSG_LENGTH);
+  memset(originalRequest, 0, MAX_MSG_LENGTH);
 
   struct thread_params *params = (struct thread_params *)input;
   port = params->port;
   sockfd = params->sockfd;
   memcpy(buf, params->buf, MAX_MSG_LENGTH);
+  memcpy(originalRequest, params->buf, MAX_MSG_LENGTH);
   char *tok = strtok(buf, " ");
 
   if (strcmp(tok, "GET") != 0) { // Only need to deal with GET requests
@@ -225,7 +250,7 @@ void *processRequest (void *input) {
   char *httpVer = strtok(tok, "\n");
   // printf("HTTP Version: %s\n", httpVer);
 
-  sendResponse(url, port, sockfd, httpVer);
+  sendResponse(url, port, sockfd, httpVer, originalRequest);
 
   // change LRU Cache as necessary
   // Should I initialize it in main?
@@ -240,6 +265,7 @@ int initServer (uint16_t port) {
   socklen_t addr_size;
   int s, new_s;
   char buf[MAX_MSG_LENGTH];
+  memset(buf, 0, MAX_MSG_LENGTH);
 
   bzero((char *)&sin, sizeof(sin));
   sin.sin_family = AF_INET;
@@ -261,8 +287,9 @@ int initServer (uint16_t port) {
       exit(1);
     }
 
-    if ((addr_size = recv(new_s, buf, sizeof(buf), 0)) > 0) {
+    if ((addr_size = recv(new_s, buf, MAX_MSG_LENGTH, 0)) > 0) {
       struct thread_params params;
+      memset(&params, 0, sizeof(params));
       params.port = port;
       params.sockfd = new_s;
       memset(params.buf, 0, MAX_MSG_LENGTH);
@@ -286,7 +313,7 @@ int main(int argc, char ** argv) {
     printf("Too many arguments\n");
     return 1;
   }
-  // signal(SIGPIPE, ignore);
+  signal(SIGPIPE, SIG_IGN);
 
   uint16_t port = atoi(argv[1]);
   int cacheSize = atoi(argv[2]);
