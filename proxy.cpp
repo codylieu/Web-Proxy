@@ -22,7 +22,8 @@ using namespace std;
 #define MAX_ATTEMPTS 5
 
 struct charArray {
-  char val[MAX_MSG_LENGTH];
+  char    val[MAX_MSG_LENGTH];
+  int     numBytes;
 };
 
 struct node {
@@ -74,8 +75,10 @@ void setHead (node *n)  {
 }
 
 node * get(char *key) {
-  node * newNode = cache.nodeMap[key];
-  if(newNode) {
+  map<char*,node*>::iterator itr;
+  itr = cache.nodeMap.find(key);
+  if(itr != cache.nodeMap.end()) {
+    node * newNode = cache.nodeMap.find(key)->second;
     removeNode(newNode);
     setHead(newNode);
     return newNode;
@@ -101,29 +104,18 @@ void addToCache (node * n)  {
   cache.nodeMap[n->key] = n;
   cache.size += n->size;
   setHead(n);
-
-  // Printing the cache...
-  // printf("CACHE: \n");
-  // node *current = cache.head->next;
-  // while(current->key != cache.tail->key)  {
-  //   printf("     %s\n", current->key);
-  //   current = current->next;
-  // }
-  // printf("\n");
 }
 
-void sendFromCache(node * n)  {
+void sendFromCache(node * n, int clientfd)  {
   for(charArray c : n->data)  {
-
+    if (strcmp(c.val, "\r\n") == 0) {
+      char close[MAX_MSG_LENGTH];
+      sprintf(close, "Connection: close\r\n");
+      send(clientfd, close, sizeof(close), 0);
+    }
+    send(clientfd, c.val, c.numBytes, 0);
   }
   return;
-}
-
-void sendFromCache () {
-  // for (elements in contentArray) {
-  //   send(clientfd, response, numBytes, 0);
-  // }
-  // // Edit cache pointers
 }
 
 int cacheContains () {
@@ -131,20 +123,11 @@ int cacheContains () {
 }
 
 void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t serverPort) {
-  node * newNode = get(ipstr);
-  if(newNode != NULL) {
-    sendFromCache(newNode);
-    return;
-  }
-  // // If the ipstr already stored in the cache, send from cache
-  // if (newNode) {
-  //   sendFromCache(ipstr);
+  // node * newNode = get(ipstr);
+  // if(newNode != NULL) {
+  //   sendFromCache(newNode, clientfd);
   //   return;
   // }
-  // if(cacheContains()) {
-  //   return;
-  // }
-  // Not in cache
   int serverfd = -1;
   int count = 0;
   while (serverfd < 0 && count < MAX_ATTEMPTS) {
@@ -181,7 +164,7 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
   char response[MAX_MSG_LENGTH];
   int numBytes = 0;
   vector<charArray> contentArray;
-  // node * newNode = new node;
+  node * newNode = new node;
   newNode->size = 0;
   do {
     memset(response, 0, MAX_MSG_LENGTH);
@@ -193,7 +176,8 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
     }
     printf("===== Server response: %s\n", response);
     charArray s;
-    strcpy(s.val,response);    
+    strcpy(s.val,response);  
+    s.numBytes = numBytes;  
     contentArray.push_back(s);
     newNode->size += numBytes;
     if (strcmp(response, "\r\n") == 0) {
