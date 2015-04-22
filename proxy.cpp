@@ -23,6 +23,7 @@ using namespace std;
 
 struct charArray {
   char val[MAX_MSG_LENGTH];
+  int numBytes;
 };
 
 struct node {
@@ -165,7 +166,8 @@ void sendFromCache(node * n, int clientfd, char *originalRequest, char *ipstr, u
     }
     printf("===== Server response: %s\n", response);
     charArray s;
-    strcpy(s.val,response);    
+    strcpy(s.val,response); 
+    s.numBytes = numBytes;   
     contentArray.push_back(s);
     newNode->size += numBytes;
     if (strcmp(response, "\r\n") == 0) {
