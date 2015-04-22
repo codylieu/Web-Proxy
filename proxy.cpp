@@ -119,6 +119,13 @@ void sendFromCache(node * n)  {
   return;
 }
 
+void sendFromCache () {
+  // for (elements in contentArray) {
+  //   send(clientfd, response, numBytes, 0);
+  // }
+  // // Edit cache pointers
+}
+
 int cacheContains () {
   return 0;
 }
@@ -169,7 +176,7 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
     break;
   }
 
-  send(serverfd, originalRequest, strlen(originalRequest), 0);
+  send(serverfd, originalRequest, strlen(originalRequest), 0); // This might be a problem
 
   char response[MAX_MSG_LENGTH];
   int numBytes = 0;
@@ -189,9 +196,16 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
     strcpy(s.val,response);    
     contentArray.push_back(s);
     newNode->size += numBytes;
+    if (strcmp(response, "\r\n") == 0) {
+      char close[MAX_MSG_LENGTH];
+      sprintf(close, "Connection: close\r\n");
+      send(clientfd, close, sizeof(close), 0);
+      send(serverfd, close, sizeof(close), 0);
+    }
     send(clientfd, response, numBytes, 0);
   }
   while (numBytes > 0);
+
   newNode->data = contentArray;
   newNode->key = ipstr;
   addToCache(newNode);
@@ -232,8 +246,8 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
   //   }
   // }
 
-  close(serverfd);
   close(clientfd);
+  close(serverfd);
   return;
 }
 
@@ -257,6 +271,7 @@ void *processRequest (void *input) {
 
   tok = strtok(NULL, " "); // In the form http://www.cnn.com/
   char *url = tok + 7;
+  // char *url = tok;
 
   struct addrinfo hints, *res;
   int status;
