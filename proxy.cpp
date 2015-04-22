@@ -115,12 +115,20 @@ void addToCache (char* key, char* val)  {
   }
 }
 
+void sendFromCache () {
+  // for (elements in contentArray) {
+  //   send(clientfd, response, numBytes, 0);
+  // }
+  // // Edit cache pointers
+}
+
 int cacheContains () {
   return 0;
 }
 
 void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t serverPort) {
   if (cacheContains()) {
+    sendFromCache();
     return;
   }
   // Not in cache
@@ -155,7 +163,7 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
     break;
   }
 
-  send(serverfd, originalRequest, strlen(originalRequest), 0);
+  send(serverfd, originalRequest, strlen(originalRequest), 0); // This might be a problem
 
   char response[MAX_MSG_LENGTH];
   int numBytes = 0;
@@ -168,6 +176,12 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
       break;
     }
     printf("===== Server response: %s\n", response);
+    if (strcmp(response, "\r\n") == 0) {
+      char close[MAX_MSG_LENGTH];
+      sprintf(close, "Connection: close\r\n");
+      send(clientfd, close, sizeof(close), 0);
+      send(serverfd, close, sizeof(close), 0);
+    }
     send(clientfd, response, numBytes, 0);
   }
   while (numBytes > 0);
@@ -208,8 +222,8 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
   //   }
   // }
 
-  close(serverfd);
   close(clientfd);
+  close(serverfd);
   return;
 }
 
@@ -233,6 +247,7 @@ void *processRequest (void *input) {
 
   tok = strtok(NULL, " "); // In the form http://www.cnn.com/
   char *url = tok + 7;
+  // char *url = tok;
 
   struct addrinfo hints, *res;
   int status;
@@ -258,7 +273,7 @@ void *processRequest (void *input) {
   handleResponse(sockfd, originalRequest, ipstr, ipv4->sin_port);
 
   // New node to add to cache (where key=url and val=url FOR NOW)
-  addToCache(url, url);
+  // addToCache(url, url);
 
   freeaddrinfo(res);
   return NULL;
@@ -325,7 +340,7 @@ int main(int argc, char ** argv) {
   signal(SIGPIPE, SIG_IGN);
 
   uint16_t port = atoi(argv[1]);
-  int cacheSize = atoi(argv[2]);
+  int cacheSize = atoi(argv[2]) * 1000000;
 
   // Initialize LRU Cache
   cache.entries = new node[cacheSize];
