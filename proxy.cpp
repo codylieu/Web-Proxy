@@ -112,8 +112,10 @@ void addToCache (node * n)  {
   // printf("\n");
 }
 
-void sendFromCache(char * key)  {
-  node * n = get(key);
+void sendFromCache(node * n)  {
+  for(charArray c : n->data)  {
+
+  }
   return;
 }
 
@@ -122,15 +124,19 @@ int cacheContains () {
 }
 
 void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t serverPort) {
-  // node * newNode = cache.nodeMap[ipstr];
+  node * newNode = get(ipstr);
+  if(newNode != NULL) {
+    sendFromCache(newNode);
+    return;
+  }
   // // If the ipstr already stored in the cache, send from cache
   // if (newNode) {
   //   sendFromCache(ipstr);
   //   return;
   // }
-  if(cacheContains()) {
-    return;
-  }
+  // if(cacheContains()) {
+  //   return;
+  // }
   // Not in cache
   int serverfd = -1;
   int count = 0;
@@ -168,7 +174,7 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
   char response[MAX_MSG_LENGTH];
   int numBytes = 0;
   vector<charArray> contentArray;
-  node * newNode = new node;
+  // node * newNode = new node;
   newNode->size = 0;
   do {
     memset(response, 0, MAX_MSG_LENGTH);
