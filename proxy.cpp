@@ -57,6 +57,7 @@ struct connections {
 struct thread_params {
   int sockfd;
   char buf[MAX_MSG_LENGTH];
+  int bufBytes;
 };
 
 //********** METHODS FOR CACHING **********//
@@ -128,7 +129,7 @@ int cacheContains () {
   return 0;
 }
 
-void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t serverPort) {
+void handleResponse (int clientfd, char *originalRequest, socklen_t originalRequestBytes, char *ipstr, uint16_t serverPort) {
   // node * newNode = cache.nodeMap[ipstr];
   // // If the ipstr already stored in the cache, send from cache
   // if (newNode) {
@@ -171,7 +172,7 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
     break;
   }
 
-  send(serverfd, originalRequest, strlen(originalRequest), 0); // This might be a problem
+  send(serverfd, originalRequest, originalRequestBytes, 0);
 
   char response[MAX_MSG_LENGTH];
   int numBytes = 0;
@@ -289,7 +290,7 @@ void *processRequest (void *input) {
   addr = &(ipv4->sin_addr);
   inet_ntop(AF_INET, addr, ipstr, sizeof(ipstr));
 
-  handleResponse(sockfd, originalRequest, ipstr, ipv4->sin_port);
+  handleResponse(sockfd, originalRequest, params->bufBytes, ipstr, ipv4->sin_port);
 
   freeaddrinfo(res);
   return NULL;
@@ -326,6 +327,7 @@ int initServer (uint16_t port) {
       struct thread_params params;
       memset(&params, 0, sizeof(params));
       params.sockfd = new_s;
+      params.bufBytes = addr_size;
       memset(params.buf, 0, MAX_MSG_LENGTH);
       memcpy(params.buf, buf, MAX_MSG_LENGTH);
 
