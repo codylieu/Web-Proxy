@@ -10,7 +10,7 @@
 #include <netdb.h>
 #include <iostream>
 #include <vector>
-#include <map>  //std::map library to use for caching
+#include <map>
 #include <signal.h>
 
 #include "proxy.h"
@@ -22,24 +22,19 @@ using namespace std;
 #define MAX_ATTEMPTS 5
 
 struct charArray {
-  char    val[MAX_MSG_LENGTH];
-  int     numBytes;
+  char val[MAX_MSG_LENGTH];
 };
 
 struct node {
-  char *        key;
-  vector<charArray>  data;
-  int           size;
-  node *        next;
-  node *        prev;
+  char                key;
+  vector<charArray>   data;
+  int                 size;
+  node *              next;
+  node *              prev;
 };
 
 struct LRU_Cache {
-  // Map
-  map<char*, node*>   nodeMap;
-  // vector<node*>       freeEntries;
-  // node *              entries;
-  // Doubly Linked List
+  map<char, node*>   nodeMap;
   node *              head;
   node *              tail;
   int                 size;
@@ -74,8 +69,8 @@ void setHead (node *n)  {
   n->next->prev = n;
 }
 
-node * get(char *key) {
-  map<char*,node*>::iterator itr;
+node * get(char key) {
+  map<char,node*>::iterator itr;
   itr = cache.nodeMap.find(key);
   if(itr != cache.nodeMap.end()) {
     node * newNode = cache.nodeMap.find(key)->second;
@@ -104,18 +99,99 @@ void addToCache (node * n)  {
   cache.nodeMap[n->key] = n;
   cache.size += n->size;
   setHead(n);
+
+  // Printing the cache...
+  // printf("CACHE: \n");
+  // node *current = cache.head->next;
+  // while(current->key != cache.tail->key)  {
+  //   printf("     %s\n", current->key);
+  //   current = current->next;
+  // }
+  // printf("\n");
 }
 
-void sendFromCache(node * n, int clientfd)  {
-  for(charArray c : n->data)  {
-    if (strcmp(c.val, "\r\n") == 0) {
+void sendFromCache(node * n, int clientfd, char *originalRequest, char *ipstr, uint16_t serverPort)  {
+  // Refresh linked list
+  // If this method is called, the ndoe already exists in the cache
+  node * oldNode = cache.nodeMap[n->key];
+  removeNode(oldNode);
+  cache.size = cache.size - oldNode->size;
+  cache.nodeMap.erase(oldNode->key);
+
+  int serverfd = -1;
+  int count = 0;
+  while (serverfd < 0 && count < MAX_ATTEMPTS) {
+    serverfd = socket(AF_INET, SOCK_STREAM, 0);
+    count++;
+  }
+  if (serverfd < 0) {
+    printf("Socket call failed\n");
+    return;
+  }
+  if (serverfd > 0) {
+    printf("Socket created\n");
+  }
+
+  struct sockaddr_in sin;
+  memset(&sin, 0, sizeof(sin));
+  sin.sin_addr.s_addr = inet_addr(ipstr);
+  sin.sin_family = AF_INET;
+  sin.sin_port = serverPort;
+
+  int count2 = 0;
+  while (count2 < MAX_ATTEMPTS) {
+    if (connect(serverfd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
+      perror("Connect error");
+      count2++;
+      continue;
+    }
+    printf("Connection Achieved\n");
+    break;
+  }
+  send(serverfd, originalRequest, strlen(originalRequest), 0); // This might be a problem
+
+  char response[MAX_MSG_LENGTH];
+  int numBytes = 0;
+  vector<charArray> contentArray;
+  node * newNode = new node;
+  newNode->size = 0;
+  do {
+    memset(response, 0, MAX_MSG_LENGTH);
+    while (1) {
+      if ((numBytes = recv(serverfd, response, MAX_MSG_LENGTH, 0)) < 0) {
+        continue;
+      }
+      break;
+    }
+    printf("===== Server response: %s\n", response);
+    charArray s;
+    strcpy(s.val,response);    
+    contentArray.push_back(s);
+    newNode->size += numBytes;
+    if (strcmp(response, "\r\n") == 0) {
       char close[MAX_MSG_LENGTH];
       sprintf(close, "Connection: close\r\n");
       send(clientfd, close, sizeof(close), 0);
+      send(serverfd, close, sizeof(close), 0);
     }
-    send(clientfd, c.val, c.numBytes, 0);
+    send(clientfd, response, numBytes, 0);
   }
+  while (numBytes > 0);
+
+  newNode->data = contentArray;
+  newNode->key = *ipstr;
+  addToCache(newNode);
+
+  close(clientfd);
+  close(serverfd);
   return;
+}
+
+void sendFromCache () {
+  // for (elements in contentArray) {
+  //   send(clientfd, response, numBytes, 0);
+  // }
+  // // Edit cache pointers
 }
 
 int cacheContains () {
@@ -123,11 +199,18 @@ int cacheContains () {
 }
 
 void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t serverPort) {
-  // node * newNode = get(ipstr);
-  // if(newNode != NULL) {
-  //   sendFromCache(newNode, clientfd);
+  // node * newNode = cache.nodeMap[ipstr];
+  // // If the ipstr already stored in the cache, send from cache
+  // if (newNode) {
+  //   sendFromCache(ipstr);
   //   return;
   // }
+  node * newNode = get(*ipstr);
+  if(newNode != NULL) {
+    sendFromCache(newNode, clientfd, originalRequest,ipstr, serverPort);
+    return;
+  }
+  // Not in cache
   int serverfd = -1;
   int count = 0;
   while (serverfd < 0 && count < MAX_ATTEMPTS) {
@@ -164,7 +247,7 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
   char response[MAX_MSG_LENGTH];
   int numBytes = 0;
   vector<charArray> contentArray;
-  node * newNode = new node;
+  newNode = new node;
   newNode->size = 0;
   do {
     memset(response, 0, MAX_MSG_LENGTH);
@@ -176,8 +259,7 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
     }
     printf("===== Server response: %s\n", response);
     charArray s;
-    strcpy(s.val,response);  
-    s.numBytes = numBytes;  
+    strcpy(s.val,response);    
     contentArray.push_back(s);
     newNode->size += numBytes;
     if (strcmp(response, "\r\n") == 0) {
@@ -191,7 +273,7 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
   while (numBytes > 0);
 
   newNode->data = contentArray;
-  newNode->key = ipstr;
+  newNode->key = *ipstr;
   addToCache(newNode);
 
   // Need to send Original Request line by line?
