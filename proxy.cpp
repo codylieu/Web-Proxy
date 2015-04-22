@@ -21,21 +21,28 @@ using namespace std;
 #define MAX_BACK_LOG 5
 #define MAX_ATTEMPTS 5
 
+struct charArray {
+  char val[MAX_MSG_LENGTH];
+};
+
 struct node {
-  char *val;
-  int size;
-  node *next;
-  node *prev;
+  char *        key;
+  vector<charArray>  data;
+  int           size;
+  node *        next;
+  node *        prev;
 };
 
 struct LRU_Cache {
   // Map
-  map<char*, node*>       nodeMap;
-  vector<node*>           freeEntries;
-  node *                  entries;
+  map<char*, node*>   nodeMap;
+  // vector<node*>       freeEntries;
+  // node *              entries;
   // Doubly Linked List
-  node *                  head;
-  node *                  tail;
+  node *              head;
+  node *              tail;
+  int                 size;
+  int                 capacity;
 };
 
 // Global Cache
@@ -66,12 +73,12 @@ void setHead (node *n)  {
   n->next->prev = n;
 }
 
-char * get(char *key) {
+node * get(char *key) {
   node * newNode = cache.nodeMap[key];
   if(newNode) {
     removeNode(newNode);
     setHead(newNode);
-    return newNode->val;
+    return newNode;
   }
   else  {
     return NULL;
@@ -84,35 +91,30 @@ void closeConnection () {
 
 }
 
-void addToCache (char* key, char* val)  {
-  printf("adding %s to cache\n",key);
-  node * newNode = cache.nodeMap[key];
-  // If a node with the input key already exists
-  if(newNode) {
-    // Refresh the link list
-    removeNode(newNode);
-    newNode->val = val;
-    setHead(newNode);
-    
+void addToCache (node * n)  {
+  // Evict LRU nodes until you can fit the new node n
+  while(cache.size + n->size > cache.capacity)  {
+    cache.size = cache.size - cache.tail->prev->size;
+    removeNode(cache.tail->prev);
+    cache.nodeMap.erase(cache.tail->prev->key);
   }
-  // If this is a new key
-  else  {
-    if(cache.freeEntries.empty()) {
-      newNode = cache.tail->prev;
-      removeNode(newNode);
-      cache.nodeMap.erase(key);
-      newNode->val = val;
-      cache.nodeMap[key] = newNode;
-      setHead(newNode);
-    }
-    else  {
-      newNode = cache.freeEntries.back();
-      cache.freeEntries.pop_back();
-      newNode->val = val;
-      cache.nodeMap[key] = newNode;
-      setHead(newNode);
-    }
-  }
+  cache.nodeMap[n->key] = n;
+  cache.size += n->size;
+  setHead(n);
+
+  // Printing the cache...
+  // printf("CACHE: \n");
+  // node *current = cache.head->next;
+  // while(current->key != cache.tail->key)  {
+  //   printf("     %s\n", current->key);
+  //   current = current->next;
+  // }
+  // printf("\n");
+}
+
+void sendFromCache(char * key)  {
+  node * n = get(key);
+  return;
 }
 
 void sendFromCache () {
@@ -127,6 +129,12 @@ int cacheContains () {
 }
 
 void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t serverPort) {
+  // node * newNode = cache.nodeMap[ipstr];
+  // // If the ipstr already stored in the cache, send from cache
+  // if (newNode) {
+  //   sendFromCache(ipstr);
+  //   return;
+  // }
   if (cacheContains()) {
     sendFromCache();
     return;
@@ -167,6 +175,9 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
 
   char response[MAX_MSG_LENGTH];
   int numBytes = 0;
+  vector<charArray> contentArray;
+  node * newNode = new node;
+  newNode->size = 0;
   do {
     memset(response, 0, MAX_MSG_LENGTH);
     while (1) {
@@ -176,6 +187,10 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
       break;
     }
     printf("===== Server response: %s\n", response);
+    charArray s;
+    strcpy(s.val,response);    
+    contentArray.push_back(s);
+    newNode->size += numBytes;
     if (strcmp(response, "\r\n") == 0) {
       char close[MAX_MSG_LENGTH];
       sprintf(close, "Connection: close\r\n");
@@ -185,6 +200,10 @@ void handleResponse (int clientfd, char *originalRequest, char *ipstr, uint16_t 
     send(clientfd, response, numBytes, 0);
   }
   while (numBytes > 0);
+
+  newNode->data = contentArray;
+  newNode->key = ipstr;
+  addToCache(newNode);
 
   // Need to send Original Request line by line?
 
@@ -272,9 +291,6 @@ void *processRequest (void *input) {
 
   handleResponse(sockfd, originalRequest, ipstr, ipv4->sin_port);
 
-  // New node to add to cache (where key=url and val=url FOR NOW)
-  // addToCache(url, url);
-
   freeaddrinfo(res);
   return NULL;
 }
@@ -323,7 +339,7 @@ int initServer (uint16_t port) {
   // Destroy the cache
   delete cache.head;
   delete cache.tail;
-  delete [] cache.entries;
+  // delete [] cache.entries;
 
   return 0;
 }
@@ -340,13 +356,15 @@ int main(int argc, char ** argv) {
   signal(SIGPIPE, SIG_IGN);
 
   uint16_t port = atoi(argv[1]);
-  int cacheSize = atoi(argv[2]) * 1000000;
+  int cacheCap = atoi(argv[2]);
 
   // Initialize LRU Cache
-  cache.entries = new node[cacheSize];
-  for(int i = 0; i < cacheSize; i++)  {
-    cache.freeEntries.push_back(cache.entries+i);
-  }
+  // cache.entries = new node[cacheSize];
+  // for(int i = 0; i < cacheSize; i++)  {
+  //   cache.freeEntries.push_back(cache.entries+i);
+  // }
+  cache.capacity = cacheCap * 1000000;
+  cache.size = 0;
   cache.head = new node;
   cache.tail = new node;
   cache.head->prev = NULL;
