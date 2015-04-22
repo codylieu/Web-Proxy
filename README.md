@@ -21,11 +21,10 @@ LIMITING CONDITIONS
 
 We ran into some bugs on our project. The main and only current bug in our project is that we must CTRL-C out of our program for the content that was received by the client to be displayed. Our program was working very robustly previously and didn’t need to do this, but after a merge and subsequent conflicts, this issue appeared and we didn’t know how to fix it.
 
+Another note is that receive can sometimes be blocked by other threads. Therefore, time needs to be given before using CTRL-C in order to be able to load as many of the images, files, formatting, etc. in a given web page as possible.
+
 CONCLUSIONS
 
 Our proxy successfully follows the basic workflow outlined in the project description. The proxy starts from the command line, listens on a certain port (corresponding to an input argument), requests from the browser are forwarded to the proxy and are handled, the proxy creates TCP connections, the proxy spawns threads to process new incoming connections, a least recently used cache is implemented within the proxy, connections are closed when data transferral stops, and the proxy closes when the client closes the connection. Given enough time our proxy is able to load most of the text, images, formatting, etc. Our cache system is functional and LRU is implemented with O(1) get and set for efficiency and increased efficiency for users. Storage limits are enforced in the addToCache method where nodes are evicted until the cache has enough space to store the node, which also holds its size in bytes so that the cache can be decremented by the correct amount when need be. We check for errors and handle them gracefully with the perror library.
 
 After implementing this web proxy, we were able to achieve set at the beginning of the assignment of gaining better understanding of HTTP request/forwarding/response, setting up proxies, and how caching works/can be used in order to improve the efficiency with which web pages are loaded. 
-
-
-
