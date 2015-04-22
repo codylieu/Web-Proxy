@@ -173,6 +173,9 @@ void handleResponse (int clientfd, char *originalRequest, socklen_t originalRequ
   }
 
   send(serverfd, originalRequest, originalRequestBytes, 0);
+  // char close2[MAX_MSG_LENGTH];
+  // sprintf(close2, "Connection:close\r\n");
+  // send(serverfd, close2, sizeof(close2), 0);
 
   char response[MAX_MSG_LENGTH];
   int numBytes = 0;
@@ -192,19 +195,19 @@ void handleResponse (int clientfd, char *originalRequest, socklen_t originalRequ
     strcpy(s.val,response);    
     contentArray.push_back(s);
     newNode->size += numBytes;
-    if (strcmp(response, "\r\n") == 0) {
-      char close[MAX_MSG_LENGTH];
-      sprintf(close, "Connection: close\r\n");
-      send(clientfd, close, sizeof(close), 0);
-      send(serverfd, close, sizeof(close), 0);
-    }
+    // if (strcmp(response, "\r\n") == 0) {
+    //   char close[MAX_MSG_LENGTH];
+    //   sprintf(close, "Connection: close\r\n");
+    //   send(clientfd, close, sizeof(close), 0);
+    //   // send(serverfd, close, sizeof(close), 0);
+    // }
     send(clientfd, response, numBytes, 0);
   }
   while (numBytes > 0);
 
   newNode->data = contentArray;
   newNode->key = ipstr;
-  addToCache(newNode);
+  // addToCache(newNode);
 
   // Need to send Original Request line by line?
 
